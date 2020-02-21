@@ -21,6 +21,7 @@ const config = {
   }],
   audits: [
     'byte-efficiency/bundle-duplication',
+    'legacy-javascript',
   ],
   // @ts-ignore: `title` is required in CategoryJson. setting to the same value as the default
   // config is awkward - easier to omit the property here. Will defer to default config.
@@ -28,6 +29,7 @@ const config = {
     'performance': {
       auditRefs: [
         {id: 'bundle-duplication', weight: 0, group: 'load-opportunities'},
+        {id: 'legacy-javascript', weight: 0, group: 'diagnostics'},
       ],
     },
   },
