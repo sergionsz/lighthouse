@@ -6,13 +6,13 @@
 'use strict';
 
 const ByteEfficiencyAudit = require('./byte-efficiency-audit.js');
-const JsBundles = require('../../computed/js-bundles.js');
+const JavascriptDuplication = require('../../computed/javascript-duplication.js');
 const i18n = require('../../lib/i18n/i18n.js');
 
 // TODO: write these.
 const UIStrings = {
   /** Imperative title of a Lighthouse audit that tells the user to remove content from their CSS that isn’t needed immediately and instead load that content at a later time. This is displayed in a list of audit titles that Lighthouse generates. */
-  title: 'Remove duplicated code within bundles',
+  title: 'Remove duplicated modules in JavaScript bundles',
   /** Description of a Lighthouse audit that tells the user *why* they should defer loading any content in CSS that isn’t needed at page load. This is displayed after a user expands the section to see more. No word length limits. 'Learn More' becomes link text to additional documentation. */
   description: 'Remove dead rules from stylesheets and defer the loading of CSS not used for ' +
     'above-the-fold content to reduce unnecessary bytes consumed by network activity. ' +
@@ -44,67 +44,7 @@ class BundleDuplication extends ByteEfficiencyAudit {
    * @return {Promise<ByteEfficiencyAudit.ByteEfficiencyProduct>}
    */
   static async audit_(artifacts, networkRecords, context) {
-    const bundles = await JsBundles.request(artifacts, context);
-
-    /**
-     * @typedef SourceData
-     * @property {string} normalizedSource
-     * @property {number} size
-     */
-
-    /** @type {Map<LH.Artifacts.RawSourceMap, SourceData[]>} */
-    const sourceDatasMap = new Map();
-
-    // Determine size of each `sources` entry.
-    for (const {rawMap, sizes} of bundles) {
-      /** @type {SourceData[]} */
-      const sourceDatas = [];
-      sourceDatasMap.set(rawMap, sourceDatas);
-
-      for (let i = 0; i < rawMap.sources.length; i++) {
-        const source = rawMap.sources[i];
-        // Trim trailing question mark - b/c webpack.
-        let normalizedSource = source.replace(/\?$/, '');
-        // Normalize paths for dependencies by keeping everything after the last `node_modules`.
-        const lastNodeModulesIndex = normalizedSource.lastIndexOf('node_modules');
-        if (lastNodeModulesIndex !== -1) {
-          normalizedSource = source.substring(lastNodeModulesIndex);
-        }
-
-        // Ignore bundle overhead.
-        if (normalizedSource.includes('webpack/bootstrap')) continue;
-        if (normalizedSource.includes('(webpack)/buildin')) continue;
-        // Ignore shims.
-        if (normalizedSource.includes('external ')) continue;
-
-        const fullSource = (rawMap.sourceRoot || '') + source;
-        const sourceSize = sizes.files[fullSource];
-
-        sourceDatas.push({
-          normalizedSource,
-          size: sourceSize,
-        });
-      }
-    }
-
-    /** @type {Map<string, Array<{scriptUrl: string, size: number}>>} */
-    const sourceDataAggregated = new Map();
-    for (const {rawMap, script} of bundles) {
-      const sourceDatas = sourceDatasMap.get(rawMap);
-      if (!sourceDatas) continue;
-
-      for (const sourceData of sourceDatas) {
-        let data = sourceDataAggregated.get(sourceData.normalizedSource);
-        if (!data) {
-          data = [];
-          sourceDataAggregated.set(sourceData.normalizedSource, data);
-        }
-        data.push({
-          scriptUrl: script.src || '',
-          size: sourceData.size,
-        });
-      }
-    }
+    const sourceDataAggregated = await JavascriptDuplication.request(artifacts, context);
 
     /**
      * @typedef ItemSubrows
@@ -121,9 +61,7 @@ class BundleDuplication extends ByteEfficiencyAudit {
 
     /** @type {Map<string, number>} */
     const wastedBytesByUrl = new Map();
-    for (const [key, sourceDatas] of sourceDataAggregated.entries()) {
-      if (sourceDatas.length === 1) continue;
-
+    for (const [source, sourceDatas] of sourceDataAggregated.entries()) {
       // One copy of this module is treated as the canonical version - the rest will have
       // non-zero `wastedBytes`. In the case of all copies being the same version, all sizes are
       // equal and the selection doesn't matter. When the copies are different versions, it does
@@ -147,7 +85,7 @@ class BundleDuplication extends ByteEfficiencyAudit {
       }
 
       items.push({
-        source: key,
+        source,
         wastedBytes: wastedBytesTotal,
         // Not needed, but keeps typescript happy.
         url: '',
