@@ -35,6 +35,8 @@ launchChromeAndRunLighthouse('https://example.com', opts).then(results => {
 
 ```
 
+**Note**: Running several instances of Lighthouse in parallel whithin the same process is *not supported*. You can read more in issue #9845.
+
 ### Performance-only Lighthouse run
 
 Many modules consuming Lighthouse are only interested in the performance numbers.
